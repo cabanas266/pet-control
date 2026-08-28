@@ -8,7 +8,6 @@ st.set_page_config(page_title="Gestão e Diário do Pet", page_icon="🐾", layo
 def init_db():
     conn = sqlite3.connect("pet_control.db")
     cursor = conn.cursor()
-    # Adicionando owner e microchip na tabela de pets
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS pets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -22,20 +21,39 @@ def init_db():
         )
     """)
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS weight (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pet_id INTEGER,
+            date TEXT,
+            weight REAL
+        )
+    """)
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS vaccines (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             pet_id INTEGER,
             name TEXT,
-            date TEXT
+            date TEXT,
+            next_date TEXT
         )
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS finances (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             pet_id INTEGER,
+            date TEXT,
             category TEXT,
             amount REAL,
-            date TEXT
+            description TEXT
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS diary (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pet_id INTEGER,
+            date TEXT,
+            note TEXT,
+            photo BLOG
         )
     """)
     conn.commit()
@@ -86,55 +104,11 @@ else:
 st.sidebar.markdown("---")
 menu = st.sidebar.radio(
     "Navegação",
-    ["Perfil / Editar", "Vacinas", "Financeiro", "Meus Pets / Novo Pet"]
+    ["Perfil / Editar", "Vacinas", "Financeiro", "Diário & Marcos", "Meus Pets / Novo Pet"]
 )
 
-# ----------------- ABA: NOVO PET / GERENCIAR -----------------
-if menu == "Meus Pets / Novo Pet":
-    st.header("🐾 Cadastrar Novo Pet")
-    with st.form("new_pet"):
-        name = st.text_input("Nome do Pet")
-        breed = st.text_input("Raça")
-        birth_date = st.date_input("Data de Nascimento")
-        gender = st.selectbox("Sexo", ["Macho", "Fêmea"])
-        owner = st.text_input("Nome do Tutor")
-        microchip = st.text_input("Número do Microchip (SIRAA / SinPatinhas)")
-        photo_file = st.file_uploader("Foto do Pet", type=["jpg", "png", "jpeg"])
-        
-        submitted = st.form_submit_button("Salvar Pet")
-        if submitted and name:
-            photo_bytes = resize_image(photo_file) if photo_file else None
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO pets (name, breed, birth_date, gender, owner, microchip, photo) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (name, breed, str(birth_date), gender, owner, microchip, photo_bytes)
-            )
-            conn.commit()
-            conn.close()
-            st.success(f"Pet {name} cadastrado com sucesso!")
-            st.rerun()
-
-    if pets:
-        st.markdown("---")
-        st.subheader("Gerenciar / Excluir Pets")
-        for p in pets:
-            col_a, col_b = st.columns([3, 1])
-            col_a.write(f"**{p[1]}** (Tutor: {p[5] or 'Não informado'})")
-            if col_b.button("Excluir", key=f"del_{p[0]}"):
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM pets WHERE id = ?", (p[0],))
-                conn.commit()
-                conn.close()
-                st.success(f"Pet {p[1]} excluído!")
-                st.rerun()
-
-elif not pets:
-    st.info("👈 Comece cadastrando o Pudim na aba 'Meus Pets / Novo Pet' no menu ao lado!")
-
-# ----------------- ABA: PERFIL -----------------
-elif menu == "Perfil / Editar" and pet_id:
+# ----------------- ABA: PERFIL / EDITAR -----------------
+if menu == "Perfil / Editar" and pet_id:
     st.header(f"Perfil de {pet_name}")
     
     col1, col2 = st.columns([1, 2])
@@ -180,10 +154,11 @@ elif menu == "Vacinas" and pet_id:
     with st.form("vac_form"):
         v_name = st.text_input("Nome da Vacina")
         v_date = st.date_input("Data da Aplicação")
+        v_next = st.date_input("Próxima Dose (Previsão)")
         if st.form_submit_button("Adicionar Vacina"):
             conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute("INSERT INTO vaccines (pet_id, name, date) VALUES (?, ?, ?)", (pet_id, v_name, str(v_date)))
+            cursor.execute("INSERT INTO vaccines (pet_id, name, date, next_date) VALUES (?, ?, ?, ?)", (pet_id, v_name, str(v_date), str(v_next)))
             conn.commit()
             conn.close()
             st.success("Vacina registrada!")
@@ -191,13 +166,13 @@ elif menu == "Vacinas" and pet_id:
             
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT name, date FROM vaccines WHERE pet_id = ?", (pet_id,))
+    cursor.execute("SELECT name, date, next_date FROM vaccines WHERE pet_id = ?", (pet_id,))
     vacs = cursor.fetchall()
     conn.close()
     
     if vacs:
         for v in vacs:
-            st.write(f"✔️ **{v[0]}** - Aplicada em: {v[1]}")
+            st.write(f"✔️ **{v[0]}** | Aplicada em: {v[1]} | Próxima: {v[2]}")
     else:
         st.info("Nenhuma vacina registrada ainda.")
 
@@ -209,10 +184,11 @@ elif menu == "Financeiro" and pet_id:
         f_cat = st.selectbox("Categoria", ["Ração", "Veterinário", "Petshop / Banho", "Brinquedos", "Outros"])
         f_val = st.number_input("Valor (R$)", min_value=0.0, format="%.2f")
         f_date = st.date_input("Data do Gasto")
+        f_desc = st.text_input("Descrição / Observação")
         if st.form_submit_button("Adicionar Despesa"):
             conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute("INSERT INTO finances (pet_id, category, amount, date) VALUES (?, ?, ?, ?)", (pet_id, f_cat, f_val, str(f_date)))
+            cursor.execute("INSERT INTO finances (pet_id, date, category, amount, description) VALUES (?, ?, ?, ?, ?)", (pet_id, str(f_date), f_cat, f_val, f_desc))
             conn.commit()
             conn.close()
             st.success("Despesa salva!")
@@ -220,14 +196,89 @@ elif menu == "Financeiro" and pet_id:
             
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT category, amount, date FROM finances WHERE pet_id = ?", (pet_id,))
+    cursor.execute("SELECT category, amount, date, description FROM finances WHERE pet_id = ?", (pet_id,))
     fins = cursor.fetchall()
     conn.close()
     
     if fins:
         total = sum([f[1] for f in fins])
-        st.metric("Gasto Total com o Pet", f"R$ {total:%2f}" if False else f"R$ {total:.2f}")
+        st.metric("Gasto Total com o Pet", f"R$ {total:.2f}")
         for f in fins:
-            st.write(f"📌 **{f[0]}** - R$ {f[1]:.2f} em {f[2]}")
+            st.write(f"📌 **{f[0]}** - R$ {f[1]:.2f} ({f[2]}) - *{f[3]}*")
     else:
         st.info("Nenhuma despesa registrada ainda.")
+
+# ----------------- ABA: DIÁRIO & MARCOS -----------------
+elif menu == "Diário & Marcos" and pet_id:
+    st.header(f"📖 Diário & Marcos - {pet_name}")
+    
+    with st.form("diary_form"):
+        d_date = st.date_input("Data do Acontecimento")
+        d_note = st.text_area("O que aconteceu hoje?")
+        if st.form_submit_button("Salvar no Diário"):
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO diary (pet_id, date, note) VALUES (?, ?, ?)", (pet_id, str(d_date), d_note))
+            conn.commit()
+            conn.close()
+            st.success("Momento salvo no diário!")
+            st.rerun()
+            
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT date, note FROM diary WHERE pet_id = ?", (pet_id,))
+    diaries = cursor.fetchall()
+    conn.close()
+    
+    if diaries:
+        for d in diaries:
+            st.write(f"📅 **{d[0]}**: {d[1]}")
+            st.markdown("---")
+    else:
+        st.info("Nenhum registro no diário ainda.")
+
+# ----------------- ABA: MEUS PETS / NOVO PET -----------------
+elif menu == "Meus Pets / Novo Pet":
+    st.header("🐾 Gerenciar Meus Pets")
+    
+    with st.form("new_pet"):
+        st.subheader("Cadastrar Novo Pet")
+        name = st.text_input("Nome do Pet")
+        breed = st.text_input("Raça")
+        birth_date = st.date_input("Data de Nascimento")
+        gender = st.selectbox("Sexo", ["Macho", "Fêmea"])
+        owner = st.text_input("Nome do Tutor")
+        microchip = st.text_input("Número do Microchip")
+        photo_file = st.file_uploader("Foto do Pet", type=["jpg", "png", "jpeg"])
+        
+        submitted = st.form_submit_button("Salvar Novo Pet")
+        if submitted and name:
+            photo_bytes = resize_image(photo_file) if photo_file else None
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO pets (name, breed, birth_date, gender, owner, microchip, photo) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (name, breed, str(birth_date), gender, owner, microchip, photo_bytes)
+            )
+            conn.commit()
+            conn.close()
+            st.success(f"Pet {name} cadastrado com sucesso!")
+            st.rerun()
+
+    if pets:
+        st.markdown("---")
+        st.subheader("Pets Cadastrados / Excluir")
+        for p in pets:
+            col_a, col_b = st.columns([3, 1])
+            col_a.write(f"**{p[1]}** (Raça: {p[2] or 'Não informada'})")
+            if col_b.button("Excluir", key=f"del_{p[0]}"):
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM pets WHERE id = ?", (p[0],))
+                conn.commit()
+                conn.close()
+                st.success(f"Pet {p[1]} excluído com sucesso!")
+                st.rerun()
+
+elif not pets:
+    st.info("👈 Nenhum pet cadastrado. Use a aba 'Meus Pets / Novo Pet' no menu lateral para cadastrar o Pudim!")
