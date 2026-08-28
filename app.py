@@ -9,14 +9,7 @@ def init_db():
     conn = sqlite3.connect("pet_control.db")
     cursor = conn.cursor()
     
-    # Verifica se a tabela pets existe e se tem todas as colunas necessárias
-    cursor.execute("PRAGMA table_info(pets)")
-    columns = [col[1] for col in cursor.fetchall()]
-    
-    # Se a tabela não tiver as colunas novas, recriamos ela limpa para evitar conflitos
-    if columns and "owner" not in columns:
-        cursor.execute("DROP TABLE IF EXISTS pets")
-        
+    # Recria todas as tabelas se necessário para garantir que nenhuma coluna fique faltando
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS pets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,14 +20,6 @@ def init_db():
             owner TEXT,
             microchip TEXT,
             photo BLOB
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS weight (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            pet_id INTEGER,
-            date TEXT,
-            weight REAL
         )
     """)
     cursor.execute("""
@@ -62,7 +47,7 @@ def init_db():
             pet_id INTEGER,
             date TEXT,
             note TEXT,
-            photo BLOG
+            photo BLOB
         )
     """)
     conn.commit()
@@ -156,6 +141,19 @@ if menu == "Perfil / Editar" and pet_id:
             st.success("Atualizado com sucesso!")
             st.rerun()
 
+    st.markdown("---")
+    if st.button("🗑️ Excluir este Pet", type="primary"):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM pets WHERE id = ?", (pet_id,))
+        cursor.execute("DELETE FROM vaccines WHERE pet_id = ?", (pet_id,))
+        cursor.execute("DELETE FROM finances WHERE pet_id = ?", (pet_id,))
+        cursor.execute("DELETE FROM diary WHERE pet_id = ?", (pet_id,))
+        conn.commit()
+        conn.close()
+        st.success("Pet excluído com sucesso!")
+        st.rerun()
+
 # ----------------- ABA: VACINAS -----------------
 elif menu == "Vacinas" and pet_id:
     st.header(f"💉 Controle de Vacinas - {pet_name}")
@@ -175,13 +173,23 @@ elif menu == "Vacinas" and pet_id:
             
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT name, date, next_date FROM vaccines WHERE pet_id = ?", (pet_id,))
+    cursor.execute("SELECT id, name, date, next_date FROM vaccines WHERE pet_id = ?", (pet_id,))
     vacs = cursor.fetchall()
     conn.close()
     
     if vacs:
+        st.markdown("### Vacinas Registradas")
         for v in vacs:
-            st.write(f"✔️ **{v[0]}** | Aplicada em: {v[1]} | Próxima: {v[2]}")
+            col_v1, col_v2 = st.columns([4, 1])
+            col_v1.write(f"✔️ **{v[1]}** | Aplicada: {v[2]} | Próxima: {v[3]}")
+            if col_v2.button("Apagar", key=f"del_vac_{v[0]}"):
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM vaccines WHERE id = ?", (v[0],))
+                conn.commit()
+                conn.close()
+                st.success("Vacina removida!")
+                st.rerun()
     else:
         st.info("Nenhuma vacina registrada ainda.")
 
@@ -205,15 +213,25 @@ elif menu == "Financeiro" and pet_id:
             
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT category, amount, date, description FROM finances WHERE pet_id = ?", (pet_id,))
+    cursor.execute("SELECT id, category, amount, date, description FROM finances WHERE pet_id = ?", (pet_id,))
     fins = cursor.fetchall()
     conn.close()
     
     if fins:
-        total = sum([f[1] for f in fins])
+        total = sum([f[2] for f in fins])
         st.metric("Gasto Total com o Pet", f"R$ {total:.2f}")
+        st.markdown("### Histórico de Despesas")
         for f in fins:
-            st.write(f"📌 **{f[0]}** - R$ {f[1]:.2f} ({f[2]}) - *{f[3]}*")
+            col_f1, col_f2 = st.columns([4, 1])
+            col_f1.write(f"📌 **{f[1]}** - R$ {f[2]:.2f} ({f[3]}) - *{f[4]}*")
+            if col_f2.button("Apagar", key=f"del_fin_{f[0]}"):
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM finances WHERE id = ?", (f[0],))
+                conn.commit()
+                conn.close()
+                st.success("Despesa removida!")
+                st.rerun()
     else:
         st.info("Nenhuma despesa registrada ainda.")
 
@@ -235,13 +253,22 @@ elif menu == "Diário & Marcos" and pet_id:
             
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT date, note FROM diary WHERE pet_id = ?", (pet_id,))
+    cursor.execute("SELECT id, date, note FROM diary WHERE pet_id = ?", (pet_id,))
     diaries = cursor.fetchall()
     conn.close()
     
     if diaries:
         for d in diaries:
-            st.write(f"📅 **{d[0]}**: {d[1]}")
+            col_d1, col_d2 = st.columns([4, 1])
+            col_d1.write(f"📅 **{d[1]}**: {d[2]}")
+            if col_d2.button("Apagar", key=f"del_dia_{d[0]}"):
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM diary WHERE id = ?", (d[0],))
+                conn.commit()
+                conn.close()
+                st.success("Registro removido!")
+                st.rerun()
             st.markdown("---")
     else:
         st.info("Nenhum registro no diário ainda.")
@@ -284,6 +311,9 @@ elif menu == "Meus Pets / Novo Pet":
                 conn = get_db_connection()
                 cursor = conn.cursor()
                 cursor.execute("DELETE FROM pets WHERE id = ?", (p[0],))
+                cursor.execute("DELETE FROM vaccines WHERE pet_id = ?", (p[0],))
+                cursor.execute("DELETE FROM finances WHERE pet_id = ?", (p[0],))
+                cursor.execute("DELETE FROM diary WHERE pet_id = ?", (p[0],))
                 conn.commit()
                 conn.close()
                 st.success(f"Pet {p[1]} excluído com sucesso!")
