@@ -8,6 +8,7 @@ st.set_page_config(page_title="Gestão e Diário do Pet", page_icon="🐾", layo
 def init_db():
     conn = sqlite3.connect("pet_control.db")
     cursor = conn.cursor()
+    # Adicionando owner e microchip na tabela de pets
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS pets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -15,6 +16,8 @@ def init_db():
             breed TEXT,
             birth_date TEXT,
             gender TEXT,
+            owner TEXT,
+            microchip TEXT,
             photo BLOB
         )
     """)
@@ -59,7 +62,7 @@ def get_pets():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT id, name, breed, birth_date, gender, photo FROM pets")
+        cursor.execute("SELECT id, name, breed, birth_date, gender, owner, microchip, photo FROM pets")
         pets = cursor.fetchall()
         conn.close()
         return pets
@@ -75,7 +78,7 @@ selected_pet_name = None
 if pets:
     selected_pet_name = st.sidebar.selectbox("Selecionar Pet", list(pet_dict.keys()))
     pet_data = pet_dict[selected_pet_name]
-    pet_id, pet_name, pet_breed, pet_birth, pet_gender, pet_photo = pet_data
+    pet_id, pet_name, pet_breed, pet_birth, pet_gender, pet_owner, pet_microchip, pet_photo = pet_data
 else:
     st.sidebar.warning("Nenhum pet cadastrado.")
     pet_id = None
@@ -94,6 +97,8 @@ if menu == "Meus Pets / Novo Pet":
         breed = st.text_input("Raça")
         birth_date = st.date_input("Data de Nascimento")
         gender = st.selectbox("Sexo", ["Macho", "Fêmea"])
+        owner = st.text_input("Nome do Tutor")
+        microchip = st.text_input("Número do Microchip (SIRAA / SinPatinhas)")
         photo_file = st.file_uploader("Foto do Pet", type=["jpg", "png", "jpeg"])
         
         submitted = st.form_submit_button("Salvar Pet")
@@ -102,8 +107,8 @@ if menu == "Meus Pets / Novo Pet":
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO pets (name, breed, birth_date, gender, photo) VALUES (?, ?, ?, ?, ?)",
-                (name, breed, str(birth_date), gender, photo_bytes)
+                "INSERT INTO pets (name, breed, birth_date, gender, owner, microchip, photo) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (name, breed, str(birth_date), gender, owner, microchip, photo_bytes)
             )
             conn.commit()
             conn.close()
@@ -112,10 +117,10 @@ if menu == "Meus Pets / Novo Pet":
 
     if pets:
         st.markdown("---")
-        st.subheader("Gerenciar Pets Existentes")
+        st.subheader("Gerenciar / Excluir Pets")
         for p in pets:
             col_a, col_b = st.columns([3, 1])
-            col_a.write(f"**{p[1]}** ({p[2]})")
+            col_a.write(f"**{p[1]}** (Tutor: {p[5] or 'Não informado'})")
             if col_b.button("Excluir", key=f"del_{p[0]}"):
                 conn = get_db_connection()
                 cursor = conn.cursor()
@@ -135,7 +140,6 @@ elif menu == "Perfil / Editar" and pet_id:
     col1, col2 = st.columns([1, 2])
     with col1:
         if pet_photo:
-            # Converte os bytes do banco em um fluxo legível pelo Streamlit
             st.image(io.BytesIO(pet_photo), width=200, caption=pet_name)
         else:
             st.info("Sem foto cadastrada.")
@@ -144,22 +148,26 @@ elif menu == "Perfil / Editar" and pet_id:
         st.write(f"**Raça:** {pet_breed}")
         st.write(f"**Nascimento:** {pet_birth}")
         st.write(f"**Sexo:** {pet_gender}")
+        st.write(f"**Tutor:** {pet_owner or 'Não informado'}")
+        st.write(f"**Microchip:** {pet_microchip or 'Não cadastrado'}")
 
     st.markdown("---")
     with st.form("update_form"):
-        st.subheader("Atualizar Foto ou Dados")
+        st.subheader("Atualizar Dados ou Foto")
         new_name = st.text_input("Nome", value=pet_name)
         new_breed = st.text_input("Raça", value=pet_breed or "")
-        new_photo = st.file_uploader("Nova Foto", type=["jpg", "png", "jpeg"])
+        new_owner = st.text_input("Tutor", value=pet_owner or "")
+        new_microchip = st.text_input("Microchip", value=pet_microchip or "")
+        new_photo = st.file_uploader("Atualizar Foto", type=["jpg", "png", "jpeg"])
         
         if st.form_submit_button("Salvar Alterações"):
             conn = get_db_connection()
             cursor = conn.cursor()
             if new_photo:
                 photo_bytes = resize_image(new_photo)
-                cursor.execute("UPDATE pets SET name = ?, breed = ?, photo = ? WHERE id = ?", (new_name, new_breed, photo_bytes, pet_id))
+                cursor.execute("UPDATE pets SET name = ?, breed = ?, owner = ?, microchip = ?, photo = ? WHERE id = ?", (new_name, new_breed, new_owner, new_microchip, photo_bytes, pet_id))
             else:
-                cursor.execute("UPDATE pets SET name = ?, breed = ? WHERE id = ?", (new_name, new_breed, pet_id))
+                cursor.execute("UPDATE pets SET name = ?, breed = ?, owner = ?, microchip = ? WHERE id = ?", (new_name, new_breed, new_owner, new_microchip, pet_id))
             conn.commit()
             conn.close()
             st.success("Atualizado com sucesso!")
@@ -218,7 +226,7 @@ elif menu == "Financeiro" and pet_id:
     
     if fins:
         total = sum([f[1] for f in fins])
-        st.metric("Gasto Total com o Pet", f"R$ {total:.2f}")
+        st.metric("Gasto Total com o Pet", f"R$ {total:%2f}" if False else f"R$ {total:.2f}")
         for f in fins:
             st.write(f"📌 **{f[0]}** - R$ {f[1]:.2f} em {f[2]}")
     else:
