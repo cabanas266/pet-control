@@ -9,7 +9,7 @@ def init_db():
     conn = sqlite3.connect("pet_control.db")
     cursor = conn.cursor()
     
-    # Recria todas as tabelas se necessário para garantir que nenhuma coluna fique faltando
+    # Recria todas as tabelas e força a limpeza da tabela de vacinas antiga para atualizar colunas
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS pets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -22,8 +22,10 @@ def init_db():
             photo BLOB
         )
     """)
+    # Drop temporário para garantir que a tabela de vacinas nasça com a estrutura correta na nuvem
+    cursor.execute("DROP TABLE IF EXISTS vaccines")
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS vaccines (
+        CREATE TABLE vaccines (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             pet_id INTEGER,
             name TEXT,
@@ -306,7 +308,7 @@ elif menu == "Meus Pets / Novo Pet":
         st.subheader("Pets Cadastrados / Excluir")
         for p in pets:
             col_a, col_b = st.columns([3, 1])
-            col_a.write(f"**{p[1]}** (Raça: {p[2] or 'Não informada'})")
+            col_a.write(f"**{p[1]}** (Raça: {p[2] or 'Non informada'})")
             if col_b.button("Excluir", key=f"del_{p[0]}"):
                 conn = get_db_connection()
                 cursor = conn.cursor()
