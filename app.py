@@ -8,6 +8,15 @@ st.set_page_config(page_title="Gestão e Diário do Pet", page_icon="🐾", layo
 def init_db():
     conn = sqlite3.connect("pet_control.db")
     cursor = conn.cursor()
+    
+    # Verifica se a tabela pets existe e se tem todas as colunas necessárias
+    cursor.execute("PRAGMA table_info(pets)")
+    columns = [col[1] for col in cursor.fetchall()]
+    
+    # Se a tabela não tiver as colunas novas, recriamos ela limpa para evitar conflitos
+    if columns and "owner" not in columns:
+        cursor.execute("DROP TABLE IF EXISTS pets")
+        
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS pets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
