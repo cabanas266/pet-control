@@ -9,7 +9,6 @@ def init_db():
     conn = sqlite3.connect("pet_control.db")
     cursor = conn.cursor()
     
-    # Recria todas as tabelas forçando a limpeza das tabelas que davam conflito na nuvem
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS pets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,9 +22,8 @@ def init_db():
         )
     """)
     
-    cursor.execute("DROP TABLE IF EXISTS vaccines")
     cursor.execute("""
-        CREATE TABLE vaccines (
+        CREATE TABLE IF NOT EXISTS vaccines (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             pet_id INTEGER,
             name TEXT,
@@ -34,9 +32,8 @@ def init_db():
         )
     """)
     
-    cursor.execute("DROP TABLE IF EXISTS finances")
     cursor.execute("""
-        CREATE TABLE finances (
+        CREATE TABLE IF NOT EXISTS finances (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             pet_id INTEGER,
             date TEXT,
@@ -125,26 +122,25 @@ if menu == "Perfil / Editar" and pet_id:
         st.write(f"**Microchip:** {pet_microchip or 'Não cadastrado'}")
 
     st.markdown("---")
-    with st.form("update_form"):
-        st.subheader("Atualizar Dados ou Foto")
-        new_name = st.text_input("Nome", value=pet_name)
-        new_breed = st.text_input("Raça", value=pet_breed or "")
-        new_owner = st.text_input("Tutor", value=pet_owner or "")
-        new_microchip = st.text_input("Microchip", value=pet_microchip or "")
-        new_photo = st.file_uploader("Atualizar Foto", type=["jpg", "png", "jpeg"])
-        
-        if st.form_submit_button("Salvar Alterações"):
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            if new_photo:
-                photo_bytes = resize_image(new_photo)
-                cursor.execute("UPDATE pets SET name = ?, breed = ?, owner = ?, microchip = ?, photo = ? WHERE id = ?", (new_name, new_breed, new_owner, new_microchip, photo_bytes, pet_id))
-            else:
-                cursor.execute("UPDATE pets SET name = ?, breed = ?, owner = ?, microchip = ? WHERE id = ?", (new_name, new_breed, new_owner, new_microchip, pet_id))
-            conn.commit()
-            conn.close()
-            st.success("Atualizado com sucesso!")
-            st.rerun()
+    st.subheader("Atualizar Dados ou Foto")
+    new_name = st.text_input("Nome", value=pet_name, key="up_name")
+    new_breed = st.text_input("Raça", value=pet_breed or "", key="up_breed")
+    new_owner = st.text_input("Tutor", value=pet_owner or "", key="up_owner")
+    new_microchip = st.text_input("Microchip", value=pet_microchip or "", key="up_chip")
+    new_photo = st.file_uploader("Atualizar Foto", type=["jpg", "png", "jpeg"], key="up_photo")
+    
+    if st.button("Salvar Alterações"):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        if new_photo:
+            photo_bytes = resize_image(new_photo)
+            cursor.execute("UPDATE pets SET name = ?, breed = ?, owner = ?, microchip = ?, photo = ? WHERE id = ?", (new_name, new_breed, new_owner, new_microchip, photo_bytes, pet_id))
+        else:
+            cursor.execute("UPDATE pets SET name = ?, breed = ?, owner = ?, microchip = ? WHERE id = ?", (new_name, new_breed, new_owner, new_microchip, pet_id))
+        conn.commit()
+        conn.close()
+        st.success("Atualizado com sucesso!")
+        st.rerun()
 
     st.markdown("---")
     if st.button("🗑️ Excluir este Pet", type="primary"):
@@ -163,19 +159,24 @@ if menu == "Perfil / Editar" and pet_id:
 elif menu == "Vacinas" and pet_id:
     st.header(f"💉 Controle de Vacinas - {pet_name}")
     
-    with st.form("vac_form"):
-        v_name = st.text_input("Nome da Vacina")
-        v_date = st.date_input("Data da Aplicação")
-        v_next = st.date_input("Próxima Dose (Previsão)")
-        if st.form_submit_button("Adicionar Vacina"):
+    st.subheader("Adicionar Nova Vacina")
+    v_name = st.text_input("Nome da Vacina", key="v_name_input")
+    v_date = st.date_input("Data da Aplicação", key="v_date_input")
+    v_next = st.date_input("Próxima Dose (Previsão)", key="v_next_input")
+    
+    if st.button("Salvar Vacina"):
+        if v_name.strip() != "":
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute("INSERT INTO vaccines (pet_id, name, date, next_date) VALUES (?, ?, ?, ?)", (pet_id, v_name, str(v_date), str(v_next)))
             conn.commit()
             conn.close()
-            st.success("Vacina registrada!")
+            st.success("Vacina registrada com sucesso!")
             st.rerun()
+        else:
+            st.warning("Por favor, digite o nome da vacina.")
             
+    st.markdown("---")
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT id, name, date, next_date FROM vaccines WHERE pet_id = ?", (pet_id,))
@@ -202,20 +203,25 @@ elif menu == "Vacinas" and pet_id:
 elif menu == "Financeiro" and pet_id:
     st.header(f"💰 Controle Financeiro - {pet_name}")
     
-    with st.form("fin_form"):
-        f_cat = st.selectbox("Categoria", ["Ração", "Veterinário", "Petshop / Banho", "Brinquedos", "Outros"])
-        f_val = st.number_input("Valor (R$)", min_value=0.0, format="%.2f")
-        f_date = st.date_input("Data do Gasto")
-        f_desc = st.text_input("Descrição / Observação")
-        if st.form_submit_button("Adicionar Despesa"):
+    st.subheader("Adicionar Nova Despesa")
+    f_cat = st.selectbox("Categoria", ["Ração", "Veterinário", "Petshop / Banho", "Brinquedos", "Outros"], key="f_cat_input")
+    f_val = st.number_input("Valor (R$)", min_value=0.0, format="%.2f", key="f_val_input")
+    f_date = st.date_input("Data do Gasto", key="f_date_input")
+    f_desc = st.text_input("Descrição / Observação", key="f_desc_input")
+    
+    if st.button("Salvar Despesa"):
+        if f_val > 0:
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute("INSERT INTO finances (pet_id, date, category, amount, description) VALUES (?, ?, ?, ?, ?)", (pet_id, str(f_date), f_cat, f_val, f_desc))
             conn.commit()
             conn.close()
-            st.success("Despesa salva!")
+            st.success("Despesa salva com sucesso!")
             st.rerun()
+        else:
+            st.warning("O valor da despesa deve ser maior que zero.")
             
+    st.markdown("---")
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT id, category, amount, date, description FROM finances WHERE pet_id = ?", (pet_id,))
@@ -244,10 +250,12 @@ elif menu == "Financeiro" and pet_id:
 elif menu == "Diário & Marcos" and pet_id:
     st.header(f"📖 Diário & Marcos - {pet_name}")
     
-    with st.form("diary_form"):
-        d_date = st.date_input("Data do Acontecimento")
-        d_note = st.text_area("O que aconteceu hoje?")
-        if st.form_submit_button("Salvar no Diário"):
+    st.subheader("Novo Registro")
+    d_date = st.date_input("Data do Acontecimento", key="d_date_input")
+    d_note = st.text_area("O que aconteceu hoje?", key="d_note_input")
+    
+    if st.button("Salvar no Diário"):
+        if d_note.strip() != "":
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute("INSERT INTO diary (pet_id, date, note) VALUES (?, ?, ?)", (pet_id, str(d_date), d_note))
@@ -255,7 +263,10 @@ elif menu == "Diário & Marcos" and pet_id:
             conn.close()
             st.success("Momento salvo no diário!")
             st.rerun()
+        else:
+            st.warning("Escreva algo no diário antes de salvar.")
             
+    st.markdown("---")
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT id, date, note FROM diary WHERE pet_id = ?", (pet_id,))
@@ -282,18 +293,17 @@ elif menu == "Diário & Marcos" and pet_id:
 elif menu == "Meus Pets / Novo Pet":
     st.header("🐾 Gerenciar Meus Pets")
     
-    with st.form("new_pet"):
-        st.subheader("Cadastrar Novo Pet")
-        name = st.text_input("Nome do Pet")
-        breed = st.text_input("Raça")
-        birth_date = st.date_input("Data de Nascimento")
-        gender = st.selectbox("Sexo", ["Macho", "Fêmea"])
-        owner = st.text_input("Nome do Tutor")
-        microchip = st.text_input("Número do Microchip")
-        photo_file = st.file_uploader("Foto do Pet", type=["jpg", "png", "jpeg"])
-        
-        submitted = st.form_submit_button("Salvar Novo Pet")
-        if submitted and name:
+    st.subheader("Cadastrar Novo Pet")
+    name = st.text_input("Nome do Pet", key="np_name")
+    breed = st.text_input("Raça", key="np_breed")
+    birth_date = st.date_input("Data de Nascimento", key="np_birth")
+    gender = st.selectbox("Sexo", ["Macho", "Fêmea"], key="np_gender")
+    owner = st.text_input("Nome do Tutor", key="np_owner")
+    microchip = st.text_input("Número do Microchip", key="np_micro")
+    photo_file = st.file_uploader("Foto do Pet", type=["jpg", "png", "jpeg"], key="np_photo")
+    
+    if st.button("Salvar Novo Pet"):
+        if name.strip() != "":
             photo_bytes = resize_image(photo_file) if photo_file else None
             conn = get_db_connection()
             cursor = conn.cursor()
@@ -305,6 +315,8 @@ elif menu == "Meus Pets / Novo Pet":
             conn.close()
             st.success(f"Pet {name} cadastrado com sucesso!")
             st.rerun()
+        else:
+            st.warning("O nome do pet é obrigatório.")
 
     if pets:
         st.markdown("---")
@@ -325,4 +337,4 @@ elif menu == "Meus Pets / Novo Pet":
                 st.rerun()
 
 elif not pets:
-    st.info("👈 Nenhum pet cadastrado. Use a aba 'Meus Pets / Novo Pet' no menu lateral para cadastrar o Pudim!")
+    st.info("👈 Nenhum pet cadastrado. Use a aba 'Meus Pets / Novo Pet' no menu lateral para cadastrar!")
